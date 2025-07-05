@@ -364,7 +364,7 @@ elif page == "📊 Model Information":
             st.subheader("📋 Model Details")
             model_info = pd.DataFrame({
                 'Attribute': ['Algorithm', 'Model Type', 'Hyperparameter Tuning', 'Cross Validation', 'Scoring Metric', 'Preprocessing', 'Target Variable', 'Features Used', 'Training Set Size', 'Test Set Size'],
-                'Value': ['Random Forest Classifier', 'Ensemble Learning', 'GridSearchCV', '3-Fold CV', 'ROC-AUC', 'StandardScaler', 'Binary Classification', '9 Selected Features', '229 samples (80%)', '57 samples (20%)']
+                'Value': ['Random Forest Classifier', 'Ensemble Learning', 'GridSearchCV', '3-Fold CV', 'ROC-AUC', 'StandardScaler', 'Binary Classification', '9 Selected Features', '226 samples (80%)', '57 samples (20%)']
             })
             st.dataframe(model_info, use_container_width=True, hide_index=True)
         
@@ -464,7 +464,7 @@ elif page == "📊 Model Information":
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #666; padding: 20px;'>
-    <p><strong>Heart Disease Prediction App v4.0.0</strong></p>
+    <p><strong>Heart Disease Prediction App v4.0.1</strong></p>
     <p>Created by Ammar Ramadhan (<a href="https://github.com/amrrmadhn" target="_blank">@amrrmadhn</a>) | 2025</p>
 </div>
 """, unsafe_allow_html=True)
