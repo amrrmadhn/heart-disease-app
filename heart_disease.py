@@ -345,7 +345,7 @@ elif page == "🩺 Heart Disease Prediction":
         st.error("❌ Model failed to load. Make sure 'heart_disease_rfc.pkl' is available.")
 
 # =====================================================================================
-# Model Information Page (Your Custom Design)
+# Model Information Page
 # =====================================================================================
 elif page == "📊 Model Information":
     st.title("📊 Model Information & Performance")
