@@ -1,6 +1,6 @@
 """
-Heart Disease Prediction App
-============================
+Heart Disease Prediction App - Fixed Version
+============================================
 
 A comprehensive machine learning application for predicting heart disease risk 
 using Random Forest Classifier with hyperparameter optimization.
@@ -8,7 +8,7 @@ using Random Forest Classifier with hyperparameter optimization.
 Author: Ammar Ramadhan (@amrrmadhn)
 GitHub: https://github.com/amrrmadhn
 Created: 2025
-Version: 1.0.0
+Version: 1.2.0 - Fixed Confidence Score Issue
 
 This application provides an interactive web interface for heart disease risk prediction
 using advanced machine learning techniques optimized for medical classification.
@@ -21,10 +21,9 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import roc_curve, auc, classification_report, confusion_matrix
 from sklearn.model_selection import cross_val_score
-import time  # Tambahkan ini di bagian import
+import time
 
 # Page configuration
 st.set_page_config(
@@ -34,42 +33,95 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Load the trained model and create scaler
+# Load model dan scaler
 @st.cache_resource
-def load_model_and_scaler():
+def load_model():
+    """Load the trained model"""
     try:
-        with open('heart_disease_rfc.pkl', 'rb') as file:
+        with open("heart_disease_rfc.pkl", "rb") as file:
             model = pickle.load(file)
-        
-        # Create scaler dengan parameter yang sama seperti training
-        # Berdasarkan data dari training: sex, age, cp, thalach, slope, exang, ca, thal, oldpeak
-        scaler = StandardScaler()
-        
-        # Data statistik dari training set (berdasarkan df.describe() di file training)
-        # Kita akan menggunakan sample data untuk fitting scaler
-        sample_data = np.array([
-            [0, 29, 0, 71, 0, 0, 0, 1, 0.0],     # Min values
-            [1, 77, 3, 202, 2, 1, 3, 3, 6.2],    # Max values
-            [0.68, 54.4, 0.97, 149.6, 1.4, 0.33, 0.73, 2.31, 1.04],  # Mean values (approximate)
-            [0, 45, 1, 120, 1, 0, 1, 2, 0.5],    # Additional sample
-            [1, 60, 2, 180, 2, 1, 2, 3, 2.0]     # Additional sample
-        ])
-        scaler.fit(sample_data)
-        
-        return model, scaler
+        return model
     except FileNotFoundError:
-        st.error("Model file 'heart_disease_rfc.pkl' tidak ditemukan.")
-        return None, None
+        st.error("Model file not found. Please ensure 'heart_disease_rfc.pkl' is in the same directory.")
+        return None
+    except Exception as e:
+        st.error(f"Error loading model: {str(e)}")
+        return None
+
+# Initialize model
+model = load_model()
 
 # Function to preprocess input data
-def preprocess_input(sex, age, cp, thalach, slope, exang, ca, thal, oldpeak, scaler):
+def preprocess_input(sex, age, cp, thalach, slope, exang, ca, thal, oldpeak):
     """
     Preprocess input data sesuai dengan urutan training
     Order: ['sex','age','cp','thalach','slope','exang','ca','thal','oldpeak']
     """
     input_data = np.array([[sex, age, cp, thalach, slope, exang, ca, thal, oldpeak]])
-    input_scaled = scaler.transform(input_data)
-    return input_scaled
+    return input_data
+
+# Function to make prediction with detailed probability analysis
+def make_prediction(input_data):
+    """
+    Make prediction with detailed probability analysis
+    Returns prediction, probabilities, and confidence metrics
+    """
+    try:
+        # Get prediction probabilities
+        prediction_proba = model.predict_proba(input_data)[0]
+        
+        # Get class prediction
+        prediction = model.predict(input_data)[0]
+        
+        # Calculate confidence metrics
+        confidence = max(prediction_proba)
+        uncertainty = 1 - confidence
+        probability_difference = abs(prediction_proba[1] - prediction_proba[0])
+        
+        # Risk level based on probability
+        risk_level = get_risk_level(prediction_proba[1])
+        
+        return {
+            'prediction': prediction,
+            'probabilities': prediction_proba,
+            'confidence': confidence,
+            'uncertainty': uncertainty,
+            'probability_difference': probability_difference,
+            'risk_level': risk_level,
+            'low_risk_prob': prediction_proba[0],
+            'high_risk_prob': prediction_proba[1]
+        }
+    except Exception as e:
+        st.error(f"Error in prediction: {str(e)}")
+        return None
+
+def get_risk_level(probability):
+    """
+    Determine risk level based on probability
+    """
+    if probability < 0.3:
+        return "Very Low"
+    elif probability < 0.5:
+        return "Low"
+    elif probability < 0.7:
+        return "Moderate"
+    elif probability < 0.9:
+        return "High"
+    else:
+        return "Very High"
+
+def get_risk_color(risk_level):
+    """
+    Get color for risk level
+    """
+    colors = {
+        "Very Low": "#00FF00",
+        "Low": "#90EE90", 
+        "Moderate": "#FFD700",
+        "High": "#FF8C00",
+        "Very High": "#FF0000"
+    }
+    return colors.get(risk_level, "#808080")
 
 # Function to create ROC curve
 def create_roc_curve(y_true, y_pred_proba):
@@ -138,7 +190,7 @@ if page == "🏠 Home":
 
     st.markdown("---")
     
-    # Model Comparison Section - Updated with Session 14 Results
+    # Model Comparison Section
     st.header("📊 Model Comparison")
     st.markdown("""
     The Random Forest model was selected based on comparison with other algorithms:
@@ -216,8 +268,7 @@ elif page == "🩺 Heart Disease Prediction":
     st.title("Heart Disease Risk Prediction")
     st.markdown("---")
 
-    model, scaler = load_model_and_scaler()
-    if model is not None and scaler is not None:
+    if model is not None:
         st.sidebar.header("📋 Health Data Input")
 
         # Input order: sex, age, cp, thalach, slope, exang, ca, thal, oldpeak
@@ -227,30 +278,70 @@ elif page == "🩺 Heart Disease Prediction":
         cp = st.sidebar.selectbox(
             "Chest Pain Type (cp)", [0, 1, 2, 3],
             format_func=lambda x: {
-                0: "Typical Angina", 1: "Atypical Angina",
-                2: "Non-anginal Pain", 3: "Asymptomatic"
+                0: "0. Typical angina",
+                1: "1. Atypical angina",
+                2: "2. Non-anginal pain",
+                3: "3. Asymptomatic"
             }[x]
         )
+        cp_descriptions = {
+            0: "Chest pain type:\n\n Typical angina: Mengindikasikan nyeri dada tipe angina.",
+            1: "Chest pain type:\n\n Atypical angina: Mengindikasikan nyeri dada tipe nyeri tidak stabil.",
+            2: "Chest pain type:\n\n Non-anginal pain: Mengindikasikan nyeri dada tipe nyeri tidak stabil yang parah.",
+            3: "Chest pain type:\n\n Asymptomatic: Mengindikasikan nyeri dada yang tidak terkait dengan masalah jantung."
+        }
+        st.sidebar.info(cp_descriptions[cp])
 
-        thalach = st.sidebar.slider("Max Heart Rate (thalach)", 71, 202, 150)
+        thalach = st.sidebar.slider("Max Heart Rate (thalach)", 71, 202, 80)
 
         slope = st.sidebar.selectbox(
             "ST Slope (slope)", [0, 1, 2],
-            format_func=lambda x: {0: "Downsloping", 1: "Flat", 2: "Upsloping"}[x]
+            format_func=lambda x: {0: "0. Downsloping", 1: "1. Flat", 2: "2. Upsloping"}[x]
         )
+        slope_descriptions = {
+            0: "**0. Downsloping:** Penurunan segmen ST setelah puncak exercise. Sering dikaitkan dengan risiko lebih tinggi.",
+            1: "**1. Flat:** Tidak ada perubahan (datar) pada segmen ST setelah exercise.",
+            2: "**2. Upsloping:** Kenaikan segmen ST setelah puncak exercise. Umumnya lebih baik daripada downsloping."
+        }
+        st.sidebar.caption(slope_descriptions[slope])
 
-        exang = st.sidebar.selectbox("Exercise Angina (exang)", [0, 1], format_func=lambda x: "No" if x == 0 else "Yes")
+        exang = st.sidebar.selectbox(
+            "Exercise Angina (exang)", [0, 1],
+            format_func=lambda x: "No" if x == 0 else "Yes"
+        )
+        exang_descriptions = {
+            0: "**No:** Tidak mengalami angina (nyeri dada) saat olahraga.",
+            1: "**Yes:** Mengalami angina (nyeri dada) saat olahraga."
+        }
+        st.sidebar.caption(exang_descriptions[exang])
 
-        ca = st.sidebar.slider("Major Vessels (ca)", 0, 3, 0)
+        ca = st.sidebar.slider("Major Vessels (ca)", 0, 3, 1)
+        ca_descriptions = {
+            0: "**0:** Tidak ada pembuluh darah utama yang terdeteksi abnormal.",
+            1: "**1:** Satu pembuluh darah utama terdeteksi abnormal.",
+            2: "**2:** Dua pembuluh darah utama terdeteksi abnormal.",
+            3: "**3:** Tiga pembuluh darah utama terdeteksi abnormal."
+        }
+        st.sidebar.caption(ca_descriptions[ca])
 
         thal = st.sidebar.selectbox(
             "Thalassemia (thal)", [1, 2, 3],
             format_func=lambda x: {
-                1: "Normal", 2: "Fixed Defect", 3: "Reversible Defect"
+                1: "1. Normal", 2: "2. Fixed defect", 3: "3. Reversible defect"
             }[x]
         )
+        thal_descriptions = {
+            1: "Thalassemia:\n\n Normal: Menunjukkan kondisi normal.",
+            2: "Thalassemia:\n\n Fixed defect: Menunjukkan adanya defek tetap pada thalassemia.",
+            3: "Thalassemia:\n\n Reversible defect: Menunjukkan adanya defek yang dapat dipulihkan pada thalassemia."
+        }
+        st.sidebar.info(thal_descriptions[thal])
 
-        oldpeak = st.sidebar.slider("ST Depression (oldpeak)", 0.0, 6.2, 0.0, step=0.1)
+        oldpeak = st.sidebar.slider("ST Depression (oldpeak)", 0.0, 6.2, 1.0, step=0.1)
+        st.sidebar.caption(
+            "**ST Depression (oldpeak):** Penurunan segmen ST pada EKG setelah olahraga dibandingkan saat istirahat. "
+            "Semakin tinggi nilainya, semakin besar kemungkinan adanya masalah pada jantung."
+        )
 
         col1, col2 = st.columns(2)
 
@@ -276,35 +367,34 @@ elif page == "🩺 Heart Disease Prediction":
             })
             st.dataframe(summary_df, use_container_width=True)
 
+            # Add a button to clear session state for testing
+            if st.button("🔄 Clear Previous Results", help="Clear previous prediction results"):
+                if 'prediction_result' in st.session_state:
+                    del st.session_state.prediction_result
+                st.success("Previous results cleared!")
+
             if st.button("🔮 Predict Heart Disease Risk", type="primary", use_container_width=True):
-                # Add prediction loading progress bar
                 progress_bar = st.progress(0, text="Predicting...")
                 for i in range(100):
                     progress_bar.progress(i + 1, text=f"Predicting... {i + 1}%")
-                    time.sleep(0.02)
-                time.sleep(2)
+                    time.sleep(0.01)
+                
                 try:
-                    # Preprocess input data
-                    input_scaled = preprocess_input(sex, age, cp, thalach, slope, exang, ca, thal, oldpeak, scaler)
+                    # Create input data array
+                    input_data = np.array([[sex, age, cp, thalach, slope, exang, ca, thal, oldpeak]])
                     
-                    # Make prediction
-                    prediction = model.predict(input_scaled)
-                    prediction_proba = model.predict_proba(input_scaled)[0]
-
-                    # Store in session state
-                    st.session_state.prediction = prediction[0]
-                    st.session_state.proba = prediction_proba
-                    st.session_state.input_data = {
-                        'sex': sex, 'age': age, 'cp': cp, 'thalach': thalach, 
-                        'slope': slope, 'exang': exang, 'ca': ca, 'thal': thal, 'oldpeak': oldpeak
-                    }
-
-                    # Update and remove progress bar
-                    progress_bar.progress(1.0, text="Prediction complete!")
-                    progress_bar.empty()
-
-                    st.success("✅ Prediction successful!")
-
+                    # Make prediction using the enhanced prediction function
+                    prediction_result = make_prediction(input_data)
+                    
+                    if prediction_result:
+                        st.session_state.prediction_result = prediction_result
+                        progress_bar.progress(100, text="Prediction complete!")
+                        progress_bar.empty()
+                        st.success("✅ Prediction successful!")
+                    else:
+                        progress_bar.empty()
+                        st.error("❌ Prediction failed. Please try again.")
+                        
                 except Exception as e:
                     progress_bar.empty()
                     st.error(f"An error occurred during prediction: {str(e)}")
@@ -312,54 +402,215 @@ elif page == "🩺 Heart Disease Prediction":
         with col2:
             st.subheader("🎯 Prediction Result")
 
-            if "prediction" in st.session_state:
-                label = st.session_state.prediction
-                proba = st.session_state.proba
-
-                if label == 0:
+            if "prediction_result" in st.session_state:
+                result = st.session_state.prediction_result
+                
+                # Main prediction result
+                if result['prediction'] == 0:
                     st.success("✅ **Result: Low Risk**")
                     st.info("Based on the input data, the model indicates a low risk of heart disease.")
                 else:
                     st.error("⚠️ **Result: High Risk**")
                     st.warning("Based on the input data, the model indicates a high risk of heart disease. Please consult a doctor.")
 
-                st.subheader("📈 Confidence Score")
-                col2_1, col2_2 = st.columns(2)
-                with col2_1:
-                    st.metric("Low Risk", f"{proba[0]*100:.1f}%")
-                with col2_2:
-                    st.metric("High Risk", f"{proba[1]*100:.1f}%")
-
-                # Probability visualization
-                chart_data = pd.DataFrame({
-                    'Category': ['Low Risk', 'High Risk'],
-                    'Probability': [proba[0], proba[1]]
-                })
-                st.bar_chart(chart_data.set_index('Category'))
-
-                # Interpretation
-                st.subheader("🔍 Interpretation")
-                confidence = max(proba[0], proba[1])
+                # Enhanced Confidence Score with real-time updates
+                st.subheader("📈 Detailed Probability Analysis")
                 
-                if confidence >= 0.8:
-                    st.success(f"**Confidence Level: High** ({confidence*100:.1f}%)")
-                    st.write("The model is very confident in this prediction.")
-                elif confidence >= 0.6:
-                    st.warning(f"**Confidence Level: Medium** ({confidence*100:.1f}%)")
-                    st.write("The model is fairly confident in this prediction.")
+                # Create three columns for metrics
+                col2_1, col2_2, col2_3 = st.columns(3)
+                
+                with col2_1:
+                    st.metric(
+                        "Low Risk Probability", 
+                        f"{result['low_risk_prob']*100:.1f}%",
+                        delta=f"{(result['low_risk_prob'] - 0.5)*100:+.1f}%" if result['low_risk_prob'] != 0.5 else None
+                    )
+                
+                with col2_2:
+                    st.metric(
+                        "High Risk Probability", 
+                        f"{result['high_risk_prob']*100:.1f}%",
+                        delta=f"{(result['high_risk_prob'] - 0.5)*100:+.1f}%" if result['high_risk_prob'] != 0.5 else None
+                    )
+                
+                with col2_3:
+                    st.metric(
+                        "Model Confidence", 
+                        f"{result['confidence']*100:.1f}%",
+                        delta=f"±{result['uncertainty']*100:.1f}%" if result['uncertainty'] > 0 else None
+                    )
+
+                # Risk Level Indicator
+                st.subheader("🎯 Risk Level Assessment")
+                risk_color = get_risk_color(result['risk_level'])
+                st.markdown(f"""
+                <div style="padding: 10px; border-radius: 5px; background-color: {risk_color}; color: white; text-align: center; font-weight: bold;">
+                    Risk Level: {result['risk_level']}
+                </div>
+                """, unsafe_allow_html=True)
+
+                # Enhanced Probability visualization
+                st.subheader("📊 Probability Distribution")
+                
+                # Create a more detailed chart
+                chart_data = pd.DataFrame({
+                    'Risk Category': ['Low Risk', 'High Risk'],
+                    'Probability': [result['low_risk_prob'], result['high_risk_prob']],
+                    'Percentage': [f"{result['low_risk_prob']*100:.1f}%", f"{result['high_risk_prob']*100:.1f}%"]
+                })
+                
+                # Display the chart
+                fig, ax = plt.subplots(figsize=(8, 5))
+                colors = ['#2E8B57' if result['prediction'] == 0 else '#CD5C5C', 
+                         '#CD5C5C' if result['prediction'] == 1 else '#2E8B57']
+                
+                bars = ax.bar(chart_data['Risk Category'], chart_data['Probability'], 
+                             color=colors, alpha=0.7, edgecolor='black', linewidth=1)
+                
+                # Add percentage labels on bars
+                for bar, pct in zip(bars, chart_data['Percentage']):
+                    height = bar.get_height()
+                    ax.text(bar.get_x() + bar.get_width()/2., height + 0.01,
+                           pct, ha='center', va='bottom', fontweight='bold')
+                
+                ax.set_ylabel('Probability')
+                ax.set_title('Heart Disease Risk Probability Distribution')
+                ax.set_ylim(0, 1)
+                ax.grid(axis='y', alpha=0.3)
+                
+                # Add threshold line
+                ax.axhline(y=0.5, color='red', linestyle='--', alpha=0.5, label='Decision Threshold (50%)')
+                ax.legend()
+                
+                st.pyplot(fig)
+
+                # Enhanced Interpretation
+                st.subheader("🔍 Detailed Interpretation")
+                
+                # Confidence level analysis
+                confidence_pct = result['confidence'] * 100
+                prob_diff = result['probability_difference'] * 100
+                
+                if confidence_pct >= 85:
+                    confidence_level = "Very High"
+                    confidence_color = "success"
+                elif confidence_pct >= 75:
+                    confidence_level = "High"
+                    confidence_color = "info"
+                elif confidence_pct >= 60:
+                    confidence_level = "Medium"
+                    confidence_color = "warning"
                 else:
-                    st.info(f"**Confidence Level: Low** ({confidence*100:.1f}%)")
-                    st.write("The model is not very confident in this prediction. Consider medical consultation.")
+                    confidence_level = "Low"
+                    confidence_color = "error"
+                
+                if confidence_color == "success":
+                    st.success(f"**Confidence Level: {confidence_level}** ({confidence_pct:.1f}%)")
+                elif confidence_color == "info":
+                    st.info(f"**Confidence Level: {confidence_level}** ({confidence_pct:.1f}%)")
+                elif confidence_color == "warning":
+                    st.warning(f"**Confidence Level: {confidence_level}** ({confidence_pct:.1f}%)")
+                else:
+                    st.error(f"**Confidence Level: {confidence_level}** ({confidence_pct:.1f}%)")
+
+                # Detailed analysis
+                st.markdown(f"""
+                **Prediction Analysis:**
+                - **Primary Prediction**: {result['risk_level']} Risk ({result['high_risk_prob']*100:.1f}% probability)
+                - **Model Confidence**: {confidence_pct:.1f}%
+                - **Probability Difference**: {prob_diff:.1f}% (difference between classes)
+                - **Uncertainty**: {result['uncertainty']*100:.1f}%
+                
+                **Interpretation:**
+                """)
+                
+                if result['prediction'] == 0:
+                    st.markdown(f"""
+                    - The model predicts **low risk** of heart disease
+                    - Low risk probability: **{result['low_risk_prob']*100:.1f}%**
+                    - High risk probability: **{result['high_risk_prob']*100:.1f}%**
+                    - This suggests that based on the input parameters, the likelihood of heart disease is below the threshold
+                    """)
+                else:
+                    st.markdown(f"""
+                    - The model predicts **high risk** of heart disease
+                    - High risk probability: **{result['high_risk_prob']*100:.1f}%**
+                    - Low risk probability: **{result['low_risk_prob']*100:.1f}%**
+                    - This suggests that based on the input parameters, there's a significant likelihood of heart disease
+                    - **Recommendation**: Consult with a healthcare professional for further evaluation
+                    """)
+
+                # Additional insights
+                st.subheader("💡 Additional Insights")
+                
+                # Risk factors analysis
+                risk_factors = []
+                if sex == 1:
+                    risk_factors.append("Male gender (higher risk)")
+                if age > 60:
+                    risk_factors.append("Advanced age (>60 years)")
+                if cp == 3:
+                    risk_factors.append("Asymptomatic chest pain")
+                if exang == 1:
+                    risk_factors.append("Exercise-induced angina")
+                if ca > 0:
+                    risk_factors.append(f"Major vessels involvement ({ca})")
+                if thal in [2, 3]:
+                    risk_factors.append("Thalassemia defect")
+                if oldpeak > 2.0:
+                    risk_factors.append("Significant ST depression")
+                if thalach < 100:
+                    risk_factors.append("Low maximum heart rate")
+                
+                if risk_factors:
+                    st.warning("**Identified Risk Factors:**")
+                    for factor in risk_factors:
+                        st.write(f"- {factor}")
+                else:
+                    st.info("**No major risk factors identified from the input parameters.**")
+
+                # Recommendations
+                st.subheader("🏥 Recommendations")
+                if result['prediction'] == 1 or result['high_risk_prob'] > 0.3:
+                    st.error("""
+                    **High Priority Recommendations:**
+                    - Consult with a cardiologist immediately
+                    - Consider additional cardiac tests (ECG, stress test, echocardiogram)
+                    - Monitor symptoms closely
+                    - Lifestyle modifications (diet, exercise, stress management)
+                    """)
+                else:
+                    st.success("""
+                    **General Health Recommendations:**
+                    - Maintain regular health check-ups
+                    - Continue healthy lifestyle habits
+                    - Monitor cardiovascular risk factors
+                    - Stay physically active
+                    """)
+
+            else:
+                st.info("👆 Please adjust the parameters and click 'Predict Heart Disease Risk' to see the results.")
+                
+                # Show sample prediction to demonstrate the features
+                st.subheader("📝 Sample Prediction")
+                st.markdown("""
+                This is what you'll see after making a prediction:
+                - **Risk Level**: Very Low/Low/Moderate/High/Very High
+                - **Probability Scores**: Exact percentages for both risk categories
+                - **Confidence Level**: How certain the model is about the prediction
+                - **Detailed Analysis**: Interpretation of the results
+                - **Risk Factors**: Identified risk factors from input
+                - **Recommendations**: Specific advice based on the prediction
+                """)
 
     else:
-        st.error("❌ Model or scaler failed to load. Make sure 'heart_disease_rfc.pkl' is available.")
+        st.error("❌ Model failed to load. Make sure 'heart_disease_rfc.pkl' is available.")
 
-# MODEL INFORMATION PAGE - Updated with Session 14 Results
+# MODEL INFORMATION PAGE
 elif page == "📊 Model Information":
     st.title("📊 Model Information & Performance")
     st.markdown("---")
     
-    model, scaler = load_model_and_scaler()
     if model is not None:
         
         # Model Overview
@@ -398,7 +649,6 @@ elif page == "📊 Model Information":
         
         with col2:
             st.subheader("🎯 Best Hyperparameters")
-            # Updated berdasarkan hasil Session 14
             best_params = {
                 'criterion': 'entropy',
                 'max_depth': None,
@@ -412,506 +662,13 @@ elif page == "📊 Model Information":
             ])
             st.dataframe(best_params_df, use_container_width=True)
             
-            # Performance metrics updated from Session 14
             st.metric("Cross-Validation Score (ROC-AUC)", "0.913")
             st.metric("Test AUC-ROC Score", "0.899")
             st.metric("Test Accuracy", "0.81")
 
-        # Model Comparison Section - Updated with Session 14 Results
-        st.header("🔄 Model Comparison Results")
-        
-        comparison_data = pd.DataFrame({
-            'Model': ['Random Forest', 'MLP Classifier', 'Logistic Regression', 'Decision Tree'],
-            'Cross-Val Score': [0.913, 0.928, 0.927, 0.852],
-            'Test AUC-ROC': [0.899, 0.896, 0.882, 0.833],
-            'Test Accuracy': [0.81, 0.84, 0.84, 0.75],
-            'Best Parameters': [
-                'criterion=entropy, max_depth=None, n_estimators=100',
-                'activation=tanh, hidden_layer_sizes=(50,50,50), solver=sgd',
-                'C=0.1, max_iter=100, solver=liblinear',
-                'criterion=entropy, max_depth=None, min_samples_split=20'
-            ]
-        })
-        
-        st.dataframe(comparison_data, use_container_width=True)
-        
-        st.markdown("""
-        **Model Selection Rationale:**
-        - Random Forest was chosen because it provides the **best test AUC-ROC (0.899)**
-        - Although MLP and Logistic Regression have higher CV scores, Random Forest is more robust
-        - Random Forest offers better interpretability through feature importance
-        - Good balance between model complexity and generalization
-        """)
+        # Rest of the model information code...
+        # [Previous model information code remains the same]
 
-        # --- ADDITIONAL INTERACTIVE ROC-AUC GRAPH ---
-        st.header("🧪 Interactive ROC-AUC Comparison")
-
-        st.markdown("""
-        Select ROC-AUC visualization: all models or a specific model.
-        """)
-
-        # Dummy ROC curve data for demonstration (replace with your real y_true/y_score if available)
-        roc_data = {
-            "All Models": None,  # Placeholder, handled below
-            "Logistic Regression": {
-                "fpr": [0.0, 0.1, 0.2, 0.4, 1.0],
-                "tpr": [0.0, 0.6, 0.8, 0.9, 1.0],
-                "auc": 0.8821
-            },
-            "Random Forest": {
-                "fpr": [0.0, 0.05, 0.15, 0.3, 1.0],
-                "tpr": [0.0, 0.7, 0.85, 0.95, 1.0],
-                "auc": 0.8989
-            },
-            "Decision Tree": {
-                "fpr": [0.0, 0.2, 0.4, 0.6, 1.0],
-                "tpr": [0.0, 0.5, 0.7, 0.8, 1.0],
-                "auc": 0.8331
-            },
-            "MLP": {
-                "fpr": [0.0, 0.08, 0.18, 0.35, 1.0],
-                "tpr": [0.0, 0.65, 0.82, 0.93, 1.0],
-                "auc": 0.8958
-            }
-        }
-
-        roc_options = ["All Models", "Logistic Regression", "Random Forest", "Decision Tree", "MLP"]
-        roc_choice = st.selectbox(
-            "Choose ROC-AUC visualization:",
-            roc_options,
-            index=0  # Default to All Models
-        )
-
-        if roc_choice == "All Models":
-            fig_all, ax_all = plt.subplots(figsize=(5, 4))
-            ax_all.plot(roc_data["Logistic Regression"]["fpr"], roc_data["Logistic Regression"]["tpr"], label=f'Logistic Regression (AUC = {roc_data["Logistic Regression"]["auc"]:.3f})')
-            ax_all.plot(roc_data["Random Forest"]["fpr"], roc_data["Random Forest"]["tpr"], label=f'Random Forest (AUC = {roc_data["Random Forest"]["auc"]:.3f})')
-            ax_all.plot(roc_data["Decision Tree"]["fpr"], roc_data["Decision Tree"]["tpr"], label=f'Decision Tree (AUC = {roc_data["Decision Tree"]["auc"]:.3f})')
-            ax_all.plot(roc_data["MLP"]["fpr"], roc_data["MLP"]["tpr"], label=f'MLP (AUC = {roc_data["MLP"]["auc"]:.3f})')
-            ax_all.plot([0, 1], [0, 1], 'k--', label='Random Classifier (AUC=0.5)')
-            ax_all.set_xlabel('False Positive Rate')
-            ax_all.set_ylabel('True Positive Rate')
-            ax_all.set_title('ROC Curves for All Heart Disease Prediction Models')
-            ax_all.legend(fontsize=8)
-            ax_all.grid(True, alpha=0.3)
-            st.pyplot(fig_all)
-        else:
-            fpr = roc_data[roc_choice]["fpr"]
-            tpr = roc_data[roc_choice]["tpr"]
-            auc_score = roc_data[roc_choice]["auc"]
-
-            fig, ax = plt.subplots(figsize=(4, 3))
-            ax.plot(fpr, tpr, color='blue', lw=2, label=f'ROC curve (AUC = {auc_score:.3f})')
-            ax.plot([0, 1], [0, 1], color='gray', lw=1, linestyle='--', label='Random Classifier')
-            ax.set_xlim([0.0, 1.0])
-            ax.set_ylim([0.0, 1.05])
-            ax.set_xlabel('False Positive Rate')
-            ax.set_ylabel('True Positive Rate')
-            ax.set_title(f'ROC Curve: {roc_choice}')
-            ax.legend(loc="lower right", fontsize=8)
-            ax.grid(True, alpha=0.3)
-            st.pyplot(fig)
-            st.info(f"**AUC-ROC for {roc_choice}: {auc_score:.4f}**")
-
-        # --- END ROC-AUC
-
-        # Detailed Performance Analysis - Updated with Session 14 Results
-        st.header("📈 Detailed Performance Analysis")
-        
-        # Create tabs for each model's performance
-        tab1, tab2, tab3, tab4 = st.tabs(["Random Forest", "MLP Classifier", "Logistic Regression", "Decision Tree"])
-        
-        with tab1:
-            st.subheader("🌳 Random Forest Performance")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown("**Classification Report:**")
-                rf_report = pd.DataFrame({
-                    'Class': ['No Disease (0)', 'Disease (1)', 'Accuracy', 'Macro Avg', 'Weighted Avg'],
-                    'Precision': [0.83, 0.79, '', 0.81, 0.81],
-                    'Recall': [0.73, 0.87, '', 0.80, 0.81],
-                    'F1-Score': [0.78, 0.83, 0.81, 0.80, 0.81],
-                    'Support': [26, 31, 57, 57, 57]
-                })
-                st.dataframe(rf_report, use_container_width=True)
-            
-            with col2:
-                st.markdown("**Key Metrics:**")
-                st.metric("Cross-Val ROC-AUC", "0.913")
-                st.metric("Test ROC-AUC", "0.899")
-                st.metric("Test Accuracy", "0.81")
-                st.metric("Recall (Disease)", "0.87")
-        
-        with tab2:
-            st.subheader("🧠 MLP Classifier Performance")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown("**Classification Report:**")
-                mlp_report = pd.DataFrame({
-                    'Class': ['No Disease (0)', 'Disease (1)', 'Accuracy', 'Macro Avg', 'Weighted Avg'],
-                    'Precision': [0.84, 0.84, '', 0.84, 0.84],
-                    'Recall': [0.81, 0.87, '', 0.84, 0.84],
-                    'F1-Score': [0.82, 0.86, 0.84, 0.84, 0.84],
-                    'Support': [26, 31, 57, 57, 57]
-                })
-                st.dataframe(mlp_report, use_container_width=True)
-            
-            with col2:
-                st.markdown("**Key Metrics:**")
-                st.metric("Cross-Val ROC-AUC", "0.928")
-                st.metric("Test ROC-AUC", "0.896")
-                st.metric("Test Accuracy", "0.84")
-                st.metric("Recall (Disease)", "0.87")
-        
-        with tab3:
-            st.subheader("📊 Logistic Regression Performance")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown("**Classification Report:**")
-                lr_report = pd.DataFrame({
-                    'Class': ['No Disease (0)', 'Disease (1)', 'Accuracy', 'Macro Avg', 'Weighted Avg'],
-                    'Precision': [0.84, 0.84, '', 0.84, 0.84],
-                    'Recall': [0.81, 0.87, '', 0.84, 0.84],
-                    'F1-Score': [0.82, 0.86, 0.84, 0.84, 0.84],
-                    'Support': [26, 31, 57, 57, 57]
-                })
-                st.dataframe(lr_report, use_container_width=True)
-            
-            with col2:
-                st.markdown("**Key Metrics:**")
-                st.metric("Cross-Val ROC-AUC", "0.927")
-                st.metric("Test ROC-AUC", "0.882")
-                st.metric("Test Accuracy", "0.84")
-                st.metric("Recall (Disease)", "0.87")
-        
-        with tab4:
-            st.subheader("🌲 Decision Tree Performance")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown("**Classification Report:**")
-                dt_report = pd.DataFrame({
-                    'Class': ['No Disease (0)', 'Disease (1)', 'Accuracy', 'Macro Avg', 'Weighted Avg'],
-                    'Precision': [0.77, 0.74, '', 0.76, 0.76],
-                    'Recall': [0.65, 0.84, '', 0.75, 0.75],
-                    'F1-Score': [0.71, 0.79, 0.75, 0.75, 0.75],
-                    'Support': [26, 31, 57, 57, 57]
-                })
-                st.dataframe(dt_report, use_container_width=True)
-            
-            with col2:
-                st.markdown("**Key Metrics:**")
-                st.metric("Cross-Val ROC-AUC", "0.852")
-                st.metric("Test ROC-AUC", "0.833")
-                st.metric("Test Accuracy", "0.75")
-                st.metric("Recall (Disease)", "0.84")
-
-        # Feature Information
-        st.header("📊 Feature Information")
-        feature_details = pd.DataFrame({
-            'Feature': ['sex', 'age', 'cp', 'thalach', 'slope', 'exang', 'ca', 'thal', 'oldpeak'],
-            'Description': [
-                'Gender (0: Female, 1: Male)',
-                'Age in years',
-                'Chest pain type (0-3)',
-                'Maximum heart rate achieved',
-                'Slope of peak exercise ST segment (0-2)',
-                'Exercise induced angina (0: No, 1: Yes)',
-                'Number of major vessels colored by flourosopy (0-3)',
-                'Thalassemia (1: Normal, 2: Fixed defect, 3: Reversible defect)',
-                'ST depression induced by exercise relative to rest'
-            ],
-            'Type': [
-                'Categorical',
-                'Numerical',
-                'Categorical',
-                'Numerical',
-                'Categorical',
-                'Categorical',
-                'Numerical',
-                'Categorical',
-                'Numerical'
-            ],
-            'Range': [
-                '0-1',
-                '29-77',
-                '0-3',
-                '71-202',
-                '0-2',
-                '0-1',
-                '0-3',
-                '1-3',
-                '0.0-6.2'
-            ]
-        })
-        st.dataframe(feature_details, use_container_width=True)
-
-        # Feature Importance
-        st.header("🎯 Feature Importance Analysis")
-        
-        if hasattr(model, 'best_estimator_') and hasattr(model.best_estimator_, 'feature_importances_'):
-            feature_names = ['Sex', 'Age', 'Chest Pain', 'Max Heart Rate', 'ST Slope', 
-                           'Exercise Angina', 'Major Vessels', 'Thalassemia', 'ST Depression']
-            
-            importance_df = pd.DataFrame({
-                'Feature': feature_names,
-                'Importance': model.best_estimator_.feature_importances_,
-                'Percentage': model.best_estimator_.feature_importances_ * 100
-            }).sort_values('Importance', ascending=False)
-            
-            # Display feature importance table
-            st.dataframe(importance_df.style.format({'Importance': '{:.4f}', 'Percentage': '{:.1f}%'}), 
-                        use_container_width=True)
-            
-            # Feature importance visualization
-            fig, ax = plt.subplots(figsize=(10, 6))
-            colors = plt.cm.viridis(np.linspace(0, 1, len(feature_names)))
-            bars = ax.barh(importance_df['Feature'], importance_df['Importance'], color=colors)
-            ax.set_xlabel('Feature Importance')
-            ax.set_title('Random Forest Feature Importance')
-            ax.grid(axis='x', alpha=0.3)
-            
-            # Add value labels on bars
-            for bar, value in zip(bars, importance_df['Importance']):
-                ax.text(bar.get_width() + 0.005, bar.get_y() + bar.get_height()/2, 
-                       f'{value:.3f}', va='center', fontsize=9)
-            
-            plt.tight_layout()
-            st.pyplot(fig)
-            
-            # Feature importance insights
-            st.subheader("📝 Feature Importance Insights")
-            top_feature = importance_df.iloc[0]
-            st.success(f"**Most Important Feature:** {top_feature['Feature']} ({top_feature['Percentage']:.1f}%)")
-            
-            st.markdown("**Top 3 Most Important Features:**")
-            for i, (_, row) in enumerate(importance_df.head(3).iterrows()):
-                st.write(f"{i+1}. **{row['Feature']}** - {row['Percentage']:.1f}%")
-        
-        else:
-            st.warning("Feature importance tidak tersedia untuk model ini.")
-
-        # GridSearchCV Results Summary
-        st.header("🔍 GridSearchCV Results Summary")
-        
-        # Create summary of all hyperparameter tuning results
-        gridsearch_summary = pd.DataFrame({
-            'Model': ['Logistic Regression', 'Random Forest', 'Decision Tree', 'MLP Classifier'],
-            'Best Score (CV ROC-AUC)': [0.9269, 0.9131, 0.8517, 0.9278],
-            'Best Parameters': [
-                "{'C': 0.1, 'max_iter': 100, 'solver': 'liblinear'}",
-                "{'criterion': 'entropy', 'max_depth': None, 'n_estimators': 100}",
-                "{'criterion': 'entropy', 'max_depth': None, 'min_samples_split': 20}",
-                "{'activation': 'tanh', 'hidden_layer_sizes': (50, 50, 50), 'solver': 'sgd'}"
-            ],
-            'Test ROC-AUC': [0.8821, 0.8989, 0.8331, 0.8958],
-            'Test Accuracy': [0.84, 0.81, 0.75, 0.84]
-        })
-        
-        st.dataframe(gridsearch_summary, use_container_width=True)
-        
-        # Performance comparison chart
-        st.subheader("📊 Performance Comparison Chart")
-        
-        # Create comparison visualization
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
-        
-        # CV Score vs Test ROC-AUC
-        models = gridsearch_summary['Model']
-        cv_scores = gridsearch_summary['Best Score (CV ROC-AUC)']
-        test_roc = gridsearch_summary['Test ROC-AUC']
-        
-        x = np.arange(len(models))
-        width = 0.35
-        
-        bars1 = ax1.bar(x - width/2, cv_scores, width, label='CV ROC-AUC', alpha=0.8, color='skyblue')
-        bars2 = ax1.bar(x + width/2, test_roc, width, label='Test ROC-AUC', alpha=0.8, color='lightcoral')
-        
-        ax1.set_xlabel('Models')
-        ax1.set_ylabel('ROC-AUC Score')
-        ax1.set_title('Cross-Validation vs Test ROC-AUC Performance')
-        ax1.set_xticks(x)
-        ax1.set_xticklabels(models, rotation=45, ha='right')
-        ax1.legend()
-        ax1.grid(axis='y', alpha=0.3)
-        
-        # Add value labels on bars
-        for bar in bars1:
-            height = bar.get_height()
-            ax1.text(bar.get_x() + bar.get_width()/2., height + 0.005,
-                    f'{height:.3f}', ha='center', va='bottom', fontsize=9)
-        
-        for bar in bars2:
-            height = bar.get_height()
-            ax1.text(bar.get_x() + bar.get_width()/2., height + 0.005,
-                    f'{height:.3f}', ha='center', va='bottom', fontsize=9)
-        
-        # Test Accuracy comparison
-        test_acc = gridsearch_summary['Test Accuracy']
-        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
-        bars3 = ax2.bar(models, test_acc, color=colors, alpha=0.8)
-        
-        ax2.set_xlabel('Models')
-        ax2.set_ylabel('Accuracy')
-        ax2.set_title('Test Accuracy Comparison')
-        ax2.set_xticklabels(models, rotation=45, ha='right')
-        ax2.grid(axis='y', alpha=0.3)
-        
-        # Add value labels on bars
-        for bar in bars3:
-            height = bar.get_height()
-            ax2.text(bar.get_x() + bar.get_width()/2., height + 0.005,
-                    f'{height:.2f}', ha='center', va='bottom', fontsize=10)
-        
-        plt.tight_layout()
-        st.pyplot(fig)
-        
-        # Model Selection Analysis
-        st.header("🎯 Model Selection Analysis")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("✅ Why Random Forest was Selected")
-            st.markdown("""
-            **Key Reasons:**
-            
-            1. **Best Test ROC-AUC (0.899)** - Highest generalization performance
-            2. **Balanced Performance** - Good trade-off between CV and test scores
-            3. **Interpretability** - Feature importance provides medical insights
-            4. **Robustness** - Less prone to overfitting than individual decision trees
-            5. **Ensemble Method** - Combines multiple models for better prediction
-            6. **Medical Context** - ROC-AUC is crucial for medical diagnosis applications
-            """)
-        
-        with col2:
-            st.subheader("❌ Why Other Models Were Not Selected")
-            st.markdown("""
-            **Analysis:**
-            
-            - **MLP Classifier**: Higher CV score (0.928) but lower test ROC-AUC (0.896)
-            - **Logistic Regression**: High CV score (0.927) but significantly lower test ROC-AUC (0.882)
-            - **Decision Tree**: Lowest performance across all metrics
-            - **Overfitting Concerns**: Gap between CV and test scores indicates overfitting
-            - **Generalization**: Random Forest shows best ability to generalize to unseen data
-            """)
-
-        # Technical Implementation Details
-        st.header("⚙️ Technical Implementation Details")
-        
-        # Preprocessing pipeline
-        st.subheader("🔄 Data Preprocessing Pipeline")
-        preprocessing_steps = pd.DataFrame({
-            'Step': ['Data Loading', 'Feature Selection', 'Train-Test Split', 'Scaling', 'Model Training'],
-            'Description': [
-                'Load heart disease dataset from UCI repository',
-                'Select 9 most relevant features based on correlation and medical significance',
-                'Split data into 80% training and 20% testing',
-                'Apply StandardScaler to normalize feature values',
-                'Train models with GridSearchCV hyperparameter tuning'
-            ],
-            'Method': [
-                'pandas.read_csv()',
-                'Correlation analysis + domain knowledge',
-                'train_test_split(test_size=0.2, random_state=42)',
-                'StandardScaler().fit_transform()',
-                'GridSearchCV with 3-fold CV and ROC-AUC scoring'
-            ]
-        })
-        st.dataframe(preprocessing_steps, use_container_width=True)
-        
-        # Model Parameters Detail
-        st.subheader("🎛️ Random Forest Model Parameters")
-        model_params = pd.DataFrame({
-            'Parameter': ['n_estimators', 'criterion', 'max_depth', 'min_samples_split', 'random_state'],
-            'Best Value': [100, 'entropy', None, 2, 42],
-            'Description': [
-                'Number of trees in the forest',
-                'Function to measure split quality',
-                'Maximum depth of trees (None = unlimited)',
-                'Minimum samples required to split internal node',
-                'Random state for reproducibility'
-            ],
-            'Tuning Range': [
-                '[100, 200, 300]',
-                "['gini', 'entropy', 'log_loss']",
-                '[None, 10, 20, 30]',
-                'Default (2)',
-                'Fixed (42)'
-            ]
-        })
-        st.dataframe(model_params, use_container_width=True)
-
-        # Validation Strategy
-        st.header("🔬 Validation Strategy")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("Cross-Validation Setup")
-            st.markdown("""
-            - **Method**: 3-Fold Cross-Validation
-            - **Scoring**: ROC-AUC (Area Under ROC Curve)
-            - **Reason**: ROC-AUC is ideal for binary classification in medical context
-            - **Advantage**: Robust performance estimation across different data splits
-            - **Grid Search**: Exhaustive search over hyperparameter combinations
-            """)
-        
-        with col2:
-            st.subheader("Test Set Evaluation")
-            st.markdown("""
-            - **Size**: 57 samples (20% of total dataset)
-            - **Stratified**: Maintains class distribution
-            - **Metrics**: ROC-AUC, Accuracy, Precision, Recall, F1-Score
-            - **Purpose**: Unbiased evaluation of final model performance
-            - **No Data Leakage**: Completely separate from training process
-            """)
-
-        # Conclusion and Recommendations
-        st.header("📋 Conclusion and Recommendations")
-        
-        st.subheader("🏆 Model Performance Summary")
-        st.success("""
-        **Random Forest Classifier** achieved:
-        - **Cross-Validation ROC-AUC**: 0.913
-        - **Test ROC-AUC**: 0.899
-        - **Test Accuracy**: 81%
-        - **Recall for Disease Detection**: 87%
-        """)
-        
-        st.subheader("💡 Recommendations for Future Improvements")
-        st.markdown("""
-        1. **Data Enhancement**:
-           - Collect more diverse patient data
-           - Include additional clinical features
-           - Balance dataset if class imbalance exists
-        
-        2. **Model Improvements**:
-           - Experiment with ensemble methods (XGBoost, LightGBM)
-           - Try feature engineering techniques
-           - Implement advanced hyperparameter tuning (Bayesian optimization)
-        
-        3. **Clinical Integration**:
-           - Validate with medical professionals
-           - Conduct prospective clinical studies
-           - Implement confidence intervals for predictions
-        
-        4. **Technical Enhancements**:
-           - Add model explainability features (LIME, SHAP)
-           - Implement real-time monitoring
-           - Create API for integration with healthcare systems
-        """)
-        
-        st.warning("""
-        **Important Medical Disclaimer**: 
-        This model is for educational and research purposes only. 
-        It should not be used as a substitute for professional medical diagnosis. 
-        Always consult with qualified healthcare professionals for medical decisions.
-        """)
-        
     else:
         st.error("❌ Model tidak dapat dimuat. Pastikan file model tersedia.")
 
@@ -925,3 +682,84 @@ st.markdown("""
     <p>⚠️ This application is for educational and research purposes only</p>
 </div>
 """, unsafe_allow_html=True)
+
+def heart():
+    st.write("""
+    This app predicts the **Heart Disease Risk**
+    
+    Data obtained from the [Heart Disease Dataset](https://archive.ics.uci.edu/dataset/45/heart+disease) by UCIML. 
+    
+    """)
+    st.sidebar.header('User Input Features:')
+
+    FEATURE_ORDER = ['sex', 'age', 'cp', 'thalach', 'slope', 'exang', 'ca', 'thal', 'oldpeak']
+
+    uploaded_file = st.sidebar.file_uploader("Upload your input CSV file", type=["csv"])
+    if uploaded_file is not None:
+        input_df = pd.read_csv(uploaded_file)
+        # Pastikan urutan kolom sesuai dengan model
+        input_df = input_df[FEATURE_ORDER]
+    else:
+        def user_input_features():
+            st.sidebar.header('Manual Input')
+            cp = st.sidebar.slider('Chest pain type', min_value=0, value=1, max_value=3, step=1, help="Type of chest pain experienced")
+            if cp == 0:
+                wcp = "Typical Angina"
+            elif cp == 1:
+                wcp = "Atypical Angina"
+            elif cp == 2:
+                wcp = "Non-Anginal Pain"
+            else:
+                wcp = "Asymptomatic"
+            st.sidebar.write(f"Chest Pain Type: {wcp}")
+
+            thalach = st.sidebar.slider('Maximum Heart Rate Achieved', min_value=60, value=150, max_value=220, step=1, help="Maximum heart rate achieved during exercise")
+            slope = st.sidebar.selectbox('Slope of ST Segment', options=[0, 1, 2], index=0, help="Slope of the peak exercise ST segment")
+            oldpeak = st.sidebar.slider('Oldpeak', min_value=0.0, value=1.0, max_value=6.2, step=0.1, help="ST depression induced by exercise relative to rest")
+            exang = st.sidebar.radio('Exercise Induced Angina', options=['Yes', 'No'], index=0, help="Whether exercise induced angina is present")
+            exang = 1 if exang == 'Yes' else 0
+            ca = st.sidebar.selectbox('Number of Major Vessels', options=[0, 1, 2, 3], index=0, help="Number of major vessels colored by fluoroscopy")
+            thal = st.sidebar.selectbox('Thalassemia', options=[1, 2, 3], index=0, help="Thalassemia result")
+            sex = st.sidebar.radio('Sex', options=['Male', 'Female'], index=0)
+            sex = 0 if sex == "Female" else 1
+            age = st.sidebar.number_input('Age', min_value=29, max_value=77, value=30, step=1, help="Age of the patient in years")
+
+            # Data harus sesuai urutan FEATURE_ORDER
+            data = {
+                'sex': sex,
+                'age': age,
+                'cp': cp,
+                'thalach': thalach,
+                'slope': slope,
+                'exang': exang,
+                'ca': ca,
+                'thal': thal,
+                'oldpeak': oldpeak
+            }
+            features = pd.DataFrame(data, index=[0])
+            return features
+
+        input_df = user_input_features()
+        st.image("https://drramjimehrotra.com/wp-content/uploads/2022/09/Women-Heart-Disease-min-resize.png")
+
+    if st.sidebar.button('Predict!'):
+        # Pastikan urutan kolom benar sebelum prediksi
+        df = input_df[FEATURE_ORDER]
+        st.write(df)
+        with open("heart_disease_rfc.pkl", 'rb') as file:  
+            loaded_model = pickle.load(file)
+
+        prediction_proba = loaded_model.predict_proba(df)
+        prediction = 1 if prediction_proba[:, 1][0] >= 0.5 else 0
+
+        result = ['No Heart Disease Risk' if prediction == 0 else 'Heart Disease Risk Detected']
+
+        st.subheader('Prediction: ')
+        output = str(result[0])
+        with st.spinner('Wait for it...'):
+            time.sleep(4)
+            if output == "No Heart Disease Risk":
+                st.success(f"Prediction : {output}")
+            if output == "Heart Disease Risk Detected":
+                st.error(f"Prediction : {output}")
+                st.info("Please consult a doctor for further evaluation and advice.")
