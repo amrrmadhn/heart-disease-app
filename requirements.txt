@@ -1,28 +1,4 @@
-# Core Dependencies
 streamlit>=1.28.0
 pandas>=2.0.0
 numpy>=1.24.0
 scikit-learn>=1.3.0
-
-# Data Visualization
-matplotlib>=3.7.0
-seaborn>=0.12.0
-plotly>=5.15.0
-
-# Machine Learning & Model Persistence
-pickle-mixin>=1.0.2
-
-# Additional Utilities
-time  # Built-in Python module (no installation needed)
-
-# Optional: Development and Testing
-pytest>=7.4.0
-jupyter>=1.0.0
-ipykernel>=6.25.0
-
-# Optional: Enhanced Visualizations
-altair>=5.0.0
-
-# System Requirements
-# Python >= 3.7
-# pip >= 21.0
