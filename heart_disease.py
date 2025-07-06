@@ -26,7 +26,7 @@ import time
 # =====================================================================================
 st.set_page_config(
     page_title="Heart Disease Prediction App",
-    page_icon=":anatomical_heart:",
+    page_icon=":heavy_heart_exclamation_mark_ornament:",
     layout="wide",
     initial_sidebar_state="expanded"
 )
